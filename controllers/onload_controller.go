@@ -388,6 +388,62 @@ func (r *OnloadReconciler) handleModuleUpdate(ctx context.Context, onload *onloa
 	return &ctrl.Result{Requeue: true}, nil
 }
 
+func (r *OnloadReconciler) handleNodeUpdate(ctx context.Context, onload *onloadv1alpha1.Onload, node corev1.Node) (*ctrl.Result, error) {
+	log := log.FromContext(ctx)
+
+	// Remove the onload label from the node
+	onloadLabelName := onloadLabelName(onload.Name, onload.Namespace)
+	onloadLabelVersion, found := node.Labels[onloadLabelName]
+	if found && onloadLabelVersion != onload.Spec.Onload.Version {
+		oldNode := node.DeepCopy()
+		delete(node.Labels, onloadLabelName)
+		err := r.Patch(ctx, &node, client.MergeFrom(oldNode))
+		if err != nil {
+			log.Error(err, "Could not patch Node to remove Onload label",
+				"Node", node.Name)
+			return nil, err
+		} else {
+			log.Info("Removed Onload label from Node " + node.Name)
+			return &ctrl.Result{Requeue: true}, nil
+		}
+	}
+
+	// Check that the Device Plugin pod has terminated before continuing
+	labelSet := labels.Set{
+		"onload.amd.com/name": onload.Name + devicePluginNameSuffix,
+	}
+	pods, err := r.getPodsOnNode(ctx, labelSet, node.Name)
+	if err != nil {
+		log.Error(err, "Failed to get Device Plugin pod on Node "+node.Name)
+		return nil, err
+	}
+	if len(pods) > 0 {
+		log.Info("Device plugin pod still exists.")
+		return &ctrl.Result{RequeueAfter: defaultRequeueTime}, nil
+	}
+
+	// Evict pods using the onload resource
+	res, err := r.evictOnloadedPods(ctx, node)
+	if err != nil || res != nil {
+		return res, err
+	}
+
+	// Remove kmm label
+	oldNode := node.DeepCopy()
+	labelName := kmmLabelName(onload.Name, onload.Namespace)
+	delete(node.Labels, labelName)
+	err = r.Patch(ctx, &node, client.MergeFrom(oldNode))
+	if err != nil {
+		log.Error(err, "Could not patch node (removing kmm label) Node: "+node.Name)
+		return nil, err
+	}
+
+	// now everything should be deleted / cleaned up
+	// Requeue and enter the reconciliation loop again to handle re-labelling
+	// this node
+	return &ctrl.Result{Requeue: true}, nil
+}
+
 const defaultRequeueTime = 5 * time.Second
 
 func (r *OnloadReconciler) handleUpdate(ctx context.Context, onload *onloadv1alpha1.Onload) (*ctrl.Result, error) {
@@ -422,58 +478,7 @@ func (r *OnloadReconciler) handleUpdate(ctx context.Context, onload *onloadv1alp
 	})
 
 	log.Info("Updating Onload version on Node "+node.Name, "Onload", onload)
-
-	// Remove the onload label from the node
-	onloadLabelName := onloadLabelName(onload.Name, onload.Namespace)
-	onloadLabelVersion, found := node.Labels[onloadLabelName]
-	if found && onloadLabelVersion != onload.Spec.Onload.Version {
-		oldNode := node.DeepCopy()
-		delete(node.Labels, onloadLabelName)
-		err := r.Patch(ctx, &node, client.MergeFrom(oldNode))
-		if err != nil {
-			log.Error(err, "Could not patch Node to remove Onload label",
-				"Node", node.Name)
-			return nil, err
-		} else {
-			log.Info("Removed Onload label from Node " + node.Name)
-			return &ctrl.Result{Requeue: true}, nil
-		}
-	}
-
-	// Check that the Device Plugin pod has terminated before continuing
-	labelSet := labels.Set{
-		"onload.amd.com/name": onload.Name + devicePluginNameSuffix,
-	}
-	pods, err := r.getPodsOnNode(ctx, labelSet, node.Name)
-	if err != nil {
-		log.Error(err, "Failed to get Device Plugin pod on Node "+node.Name)
-		return nil, err
-	}
-	if len(pods) > 0 {
-		log.Info("Device plugin pod still exists.")
-		return &ctrl.Result{RequeueAfter: defaultRequeueTime}, nil
-	}
-
-	// Evict pods using the onload resource
-	res, err = r.evictOnloadedPods(ctx, node)
-	if err != nil || res != nil {
-		return res, err
-	}
-
-	// Remove kmm label
-	oldNode := node.DeepCopy()
-	labelName := kmmLabelName(onload.Name, onload.Namespace)
-	delete(node.Labels, labelName)
-	err = r.Patch(ctx, &node, client.MergeFrom(oldNode))
-	if err != nil {
-		log.Error(err, "Could not patch node (removing kmm label) Node: "+node.Name)
-		return nil, err
-	}
-
-	// now everything should be deleted / cleaned up
-	// Requeue and enter the reconciliation loop again to handle re-labelling
-	// this node
-	return &ctrl.Result{Requeue: true}, nil
+	return r.handleNodeUpdate(ctx, onload, node)
 }
 
 // This is just a temporary (TM) function since using a field selector isn't
@@ -511,7 +516,6 @@ func (r *OnloadReconciler) getPodsOnNode(ctx context.Context, labelSelector map[
 func (r *OnloadReconciler) getPodsUsingOnload(ctx context.Context, node corev1.Node) ([]corev1.Pod, error) {
 	log := log.FromContext(ctx)
 
-	allPods := corev1.PodList{}
 	podsUsingOnload := []corev1.Pod{}
 
 	// Ideally this func should be using a field selector, but that requires
@@ -519,15 +523,12 @@ func (r *OnloadReconciler) getPodsUsingOnload(ctx context.Context, node corev1.N
 	// For now we have to get all pods, then manually filter by nodeName and
 	// resource requests.
 
-	err := r.List(ctx, &allPods)
+	allPods, err := r.getPodsOnNode(ctx, map[string]string{}, node.Name)
 	if err != nil {
 		log.Error(err, "Failed to list Pods")
 	}
 
-	for _, pod := range allPods.Items {
-		if pod.Spec.NodeName != node.Name {
-			continue
-		}
+	for _, pod := range allPods {
 		for _, container := range pod.Spec.Containers {
 			numOnloads := container.Resources.Requests.Name("amd.com/onload", resource.DecimalSI)
 			if numOnloads != nil && numOnloads.CmpInt64(0) > 0 {
