@@ -14,21 +14,34 @@ import (
 type OnloadKernelBuildSpec struct {
 }
 
+// Currently unimplemented
+type NICKernelBuildSpec struct {
+}
+
 type OnloadKernelMapping struct {
 	// Regexp is a regular expression that is used to match against the kernel
 	// versions of the nodes in the cluster
 	Regexp string `json:"regexp"`
 
-	// KernelImage is the image that contains the out-of-tree kernel modules
-	// used by onload, including the sfc driver.
-	KernelModuleImage string `json:"kernelModuleImage"`
+	// OnloadModuleImage is the image that contains the out-of-tree kernel
+	// modules used by Onload.
+	OnloadModuleImage string `json:"onloadModuleImage"`
 
 	// +optional
-	// Build contains build options for building kernel level components.
+	// OnloadBuild contains build options for building kernel level components.
 	// If non-nil the operator will attempt to build the required images using
 	// what is defined in the build section, and push the images to the
 	// specified locations.
-	Build *OnloadKernelBuildSpec `json:"build"`
+	OnloadBuild *OnloadKernelBuildSpec `json:"onloadBuild"`
+
+	// +optional
+	// NICModuleImage contains the out-of-tree NIC driver. If not present,
+	// the controller won't deploy the Module kind for NIC.
+	NICModuleImage string `json:"nicModuleImage"`
+
+	// +optional
+	// NICBuild is similar to the OnloadBuild field above.
+	NICBuild *NICKernelBuildSpec `json:"nicBuild"`
 }
 
 // Currently unimplemented

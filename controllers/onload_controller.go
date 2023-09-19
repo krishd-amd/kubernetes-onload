@@ -166,7 +166,7 @@ func createModule(
 	kernelMappings := []kmm.KernelMapping{}
 
 	for _, kmapSpec := range onload.Spec.Onload.KernelMappings {
-		if kmapSpec.Build != nil {
+		if kmapSpec.OnloadBuild != nil {
 			return nil, errors.New(
 				"build keys in KernelMappings aren't currently supported",
 			)
@@ -174,7 +174,7 @@ func createModule(
 
 		kmap := kmm.KernelMapping{
 			Regexp:         kmapSpec.Regexp,
-			ContainerImage: kmapSpec.KernelModuleImage,
+			ContainerImage: kmapSpec.OnloadModuleImage,
 		}
 		kernelMappings = append(kernelMappings, kmap)
 	}

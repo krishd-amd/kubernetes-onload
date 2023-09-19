@@ -39,8 +39,8 @@ var _ = Describe("Testing createModule function", func() {
 				KernelMappings: []onloadv1alpha1.OnloadKernelMapping{
 					{
 						Regexp:            "example",
-						KernelModuleImage: "example",
-						Build:             &onloadv1alpha1.OnloadKernelBuildSpec{},
+						OnloadModuleImage: "example",
+						OnloadBuild:       &onloadv1alpha1.OnloadKernelBuildSpec{},
 					},
 				},
 			},
@@ -102,7 +102,7 @@ var _ = Describe("onload controller", func() {
 					Onload: onloadv1alpha1.OnloadSpec{
 						KernelMappings: []onloadv1alpha1.OnloadKernelMapping{
 							{
-								KernelModuleImage: "",
+								OnloadModuleImage: "",
 								Regexp:            "",
 							},
 						},
