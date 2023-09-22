@@ -23,6 +23,7 @@ import (
 
 var _ = Describe("Testing createModule function", func() {
 	var onload *onloadv1alpha1.Onload
+	Expect(true).Should(fail)
 
 	BeforeEach(func() {
 		onload = &onloadv1alpha1.Onload{}

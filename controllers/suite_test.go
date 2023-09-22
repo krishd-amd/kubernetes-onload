@@ -86,7 +86,6 @@ var _ = BeforeSuite(func() {
 	k8sManager, err := manager.New(cfg, manager.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sManager).NotTo(BeNil())
-
 	err = (&OnloadReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
