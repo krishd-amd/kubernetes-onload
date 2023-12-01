@@ -12,9 +12,20 @@ configMapGenerator:
   files:
   - sfptpd.cfg
 
+# Corresponds to namespace.yaml
 namespace: sfptpd
 
+# Latest stable
 images:
 - name: onload/sfptpd
   newName: kitchensink.test.kube.test:5000/sfptpd
   newTag: master-dev
+
+# Assign sfptpd daemon to a node with label `node-role.kubernetes.io/ptp`
+labels:
+- pairs:
+    node-role.kubernetes.io/ptp: ""
+  fields:
+  - path: spec/template/spec/nodeSelector
+    kind: DaemonSet
+    create: true
